@@ -80,4 +80,4 @@ def test_change_name_asks_again():
     at = visit()
     give_name(at, "Ann")
     click(at, "Change name")
-    assert at.text_input[0].label == "What is your name?"
+    assert at.text_input[0].label == "Vad heter du?"

@@ -70,7 +70,7 @@ def show_guide():
 def ask_for_name():
     st.header("Comments")
     with st.form("name_form"):
-        name = st.text_input("What is your name?", max_chars=db.MAX_NAME)
+        name = st.text_input("Vad heter du?", max_chars=db.MAX_NAME)
         submitted = st.form_submit_button("Continue")
     if submitted:
         try:
