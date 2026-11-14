@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 
   # Settings are passed with -backend-config by the workflow.
@@ -29,54 +25,25 @@ data "azurerm_resource_group" "main" {
   name = var.resource_group_name
 }
 
-# ---------------------------------------------------------------- database
-# Kept on stop (the workflow only pauses it), so comments survive.
+data "azurerm_client_config" "current" {}
 
-resource "random_password" "postgres" {
-  length      = 32
-  special     = false
-  min_upper   = 2
-  min_lower   = 2
-  min_numeric = 2
-}
+# ---------------------------------------------------------------- comment storage
+# Table Storage. Kept on stop, so comments survive. The app creates the table
+# itself on first use.
 
-resource "azurerm_postgresql_flexible_server" "main" {
-  name                          = var.postgres_server_name
-  resource_group_name           = data.azurerm_resource_group.main.name
-  location                      = var.location
-  version                       = var.postgres_version
-  sku_name                      = var.postgres_sku
-  storage_mb                    = 32768
-  backup_retention_days         = 7
-  administrator_login           = "commentsadmin"
-  administrator_password        = random_password.postgres.result
-  public_network_access_enabled = true
-
-  lifecycle {
-    prevent_destroy = true
-    # Azure picks the zone; don't try to move the server afterwards.
-    ignore_changes = [zone]
-  }
-}
-
-resource "azurerm_postgresql_flexible_server_database" "comments" {
-  name      = "comments"
-  server_id = azurerm_postgresql_flexible_server.main.id
-  charset   = "UTF8"
-  collation = "en_US.utf8"
+resource "azurerm_storage_account" "comments" {
+  # Globally unique, like the names in scripts/bootstrap-azure.sh.
+  name                            = "st${var.name}${substr(sha1(data.azurerm_client_config.current.subscription_id), 0, 8)}"
+  resource_group_name             = data.azurerm_resource_group.main.name
+  location                        = var.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  min_tls_version                 = "TLS1_2"
+  allow_nested_items_to_be_public = false
 
   lifecycle {
     prevent_destroy = true
   }
-}
-
-# Lets Azure services (the container app) reach the server. Connections still
-# need the password and TLS.
-resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
-  name             = "AllowAzureServices"
-  server_id        = azurerm_postgresql_flexible_server.main.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "0.0.0.0"
 }
 
 # ---------------------------------------------------------------- web app
@@ -97,8 +64,8 @@ resource "azurerm_container_app" "web" {
   revision_mode                = "Single"
 
   secret {
-    name  = "pg-password"
-    value = random_password.postgres.result
+    name  = "storage-connection-string"
+    value = azurerm_storage_account.comments.primary_connection_string
   }
 
   ingress {
@@ -122,29 +89,11 @@ resource "azurerm_container_app" "web" {
       memory = "1Gi"
 
       env {
-        name  = "PGHOST"
-        value = azurerm_postgresql_flexible_server.main.fqdn
-      }
-      env {
-        name  = "PGUSER"
-        value = azurerm_postgresql_flexible_server.main.administrator_login
-      }
-      env {
-        name        = "PGPASSWORD"
-        secret_name = "pg-password"
-      }
-      env {
-        name  = "PGDATABASE"
-        value = azurerm_postgresql_flexible_server_database.comments.name
-      }
-      env {
-        name  = "PGSSLMODE"
-        value = "require"
+        name        = "AZURE_STORAGE_CONNECTION_STRING"
+        secret_name = "storage-connection-string"
       }
     }
   }
-
-  depends_on = [azurerm_postgresql_flexible_server_firewall_rule.azure_services]
 
   lifecycle {
     precondition {

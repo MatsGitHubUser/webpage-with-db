@@ -18,16 +18,16 @@ def test_clean_rejects_too_long():
         db.clean("abcd", 3, "Comment")
 
 
-def test_comments_are_listed_newest_first(pool):
-    db.add_comment(pool, "Ann", "first")
-    db.add_comment(pool, "Bob", "second")
-    assert [(c.author, c.body) for c in db.list_comments(pool)] == [
+def test_comments_are_listed_newest_first(table):
+    db.add_comment(table, "Ann", "first")
+    db.add_comment(table, "Bob", "second")
+    assert [(c.author, c.body) for c in db.list_comments(table)] == [
         ("Bob", "second"),
         ("Ann", "first"),
     ]
 
 
-def test_add_comment_validates(pool):
+def test_add_comment_validates(table):
     with pytest.raises(ValueError, match="Comment cannot be empty"):
-        db.add_comment(pool, "Ann", "  ")
-    assert db.list_comments(pool) == []
+        db.add_comment(table, "Ann", "  ")
+    assert db.list_comments(table) == []

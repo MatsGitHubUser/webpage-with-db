@@ -13,15 +13,10 @@ SUB_ID="$(az account show --query id -o tsv)"
 TENANT_ID="$(az account show --query tenantId -o tsv)"
 SUFFIX="$(printf '%s' "$SUB_ID" | sha1sum | cut -c1-8)"
 STORAGE="tfwebpagedb${SUFFIX}"
-# "-ne" (North Europe, see infra/variables.tf): Azure kept the plain name
-# reserved in Sweden Central after a failed create there, so it cannot be
-# reused in another region.
-PG_SERVER="psql-webpagedb-${SUFFIX}-ne"
 
 echo "==> Registering resource providers"
 az provider register --namespace Microsoft.App --wait
 az provider register --namespace Microsoft.Storage --wait
-az provider register --namespace Microsoft.DBforPostgreSQL --wait
 
 echo "==> Creating resource groups in $LOCATION"
 RG_APP_ID="$(az group create -n "$RG_APP" -l "$LOCATION" --query id -o tsv)"
@@ -76,6 +71,5 @@ gh variable set AZURE_CLIENT_ID --repo "$REPO" --body "$CLIENT_ID"
 gh variable set AZURE_TENANT_ID --repo "$REPO" --body "$TENANT_ID"
 gh variable set AZURE_SUBSCRIPTION_ID --repo "$REPO" --body "$SUB_ID"
 gh variable set TFSTATE_STORAGE_ACCOUNT --repo "$REPO" --body "$STORAGE"
-gh variable set PG_SERVER_NAME --repo "$REPO" --body "$PG_SERVER"
 
 echo "Done."

@@ -5,9 +5,8 @@ import re
 from datetime import timezone
 from pathlib import Path
 
-import psycopg
-import psycopg_pool
 import streamlit as st
+from azure.core.exceptions import AzureError
 
 import db
 
@@ -53,8 +52,8 @@ def as_plain_markdown(text: str) -> str:
 
 
 @st.cache_resource
-def get_pool():
-    return db.open_pool()
+def get_table():
+    return db.open_table()
 
 
 def show_guide():
@@ -94,17 +93,17 @@ def comment_page(name: str):
         posted = st.form_submit_button("Post comment")
 
     try:
-        pool = get_pool()
+        table = get_table()
         if posted:
             try:
-                db.add_comment(pool, name, body)
+                db.add_comment(table, name, body)
             except ValueError as err:
                 st.error(str(err))
             else:
                 st.toast("Comment saved")
-        comments = db.list_comments(pool)
-    except (psycopg.OperationalError, psycopg_pool.PoolTimeout):
-        st.error("The database can't be reached right now. Please try again in a minute.")
+        comments = db.list_comments(table)
+    except AzureError:
+        st.error("The comment storage can't be reached right now. Please try again in a minute.")
         st.stop()
 
     heading, refresh = st.columns([3, 1], vertical_alignment="center")

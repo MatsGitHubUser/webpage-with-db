@@ -1,60 +1,52 @@
-"""Comment storage in Postgres.
+"""Comment storage in Azure Table Storage.
 
-Connection settings come from the standard libpq environment variables
-(PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGSSLMODE), so no connection string
-has to be built or escaped here.
+The storage account is given by the AZURE_STORAGE_CONNECTION_STRING environment
+variable: locally it points at the Azurite emulator (see compose.yaml), in Azure
+at the storage account Terraform creates (see infra/main.tf).
+
+All comments share one partition. The RowKey counts down with time, so the
+table's natural sort order (by PartitionKey, then RowKey) is newest first.
 """
 
+import os
+import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+from itertools import islice
 
-from psycopg.rows import class_row
-from psycopg_pool import ConnectionPool
+from azure.data.tables import TableClient, TableServiceClient
 
 MAX_NAME = 50
 MAX_BODY = 1000
 
-SCHEMA = f"""
-CREATE TABLE IF NOT EXISTS comments (
-    id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    author     text NOT NULL CHECK (char_length(author) BETWEEN 1 AND {MAX_NAME}),
-    body       text NOT NULL CHECK (char_length(body) BETWEEN 1 AND {MAX_BODY}),
-    created_at timestamptz NOT NULL DEFAULT now()
-)
-"""
+PARTITION = "comments"
+# Microseconds since 1970 stay below this until the year 2286.
+_ROW_KEY_CEILING = 10**16
 
 
 @dataclass(frozen=True)
 class Comment:
-    id: int
+    id: str
     author: str
     body: str
     created_at: datetime
 
 
-def open_pool(conninfo: str = "") -> ConnectionPool:
-    """Open a connection pool and make sure the table exists."""
-    pool = ConnectionPool(
-        conninfo,
-        min_size=1,
-        max_size=5,
-        timeout=10,
-        # Drops connections that died while idle, e.g. after the Azure
-        # database was stopped and started again.
-        check=ConnectionPool.check_connection,
-        open=True,
+def open_table() -> TableClient:
+    """Connect to the comments table, creating it if needed."""
+    service = TableServiceClient.from_connection_string(
+        os.environ["AZURE_STORAGE_CONNECTION_STRING"],
+        # Fail within seconds when storage is unreachable instead of retrying
+        # for minutes, so the page can show an error.
+        retry_total=2,
+        connection_timeout=5,
+        read_timeout=10,
     )
-    try:
-        with pool.connection() as conn:
-            conn.execute(SCHEMA)
-    except Exception:
-        pool.close()
-        raise
-    return pool
+    return service.create_table_if_not_exists(os.environ.get("COMMENTS_TABLE", "comments"))
 
 
 def clean(value: str, limit: int, what: str) -> str:
-    """Trim user input and check it fits the table constraints."""
+    """Trim user input and check it fits the limits."""
     value = (value or "").replace("\x00", "").strip()
     if not value:
         raise ValueError(f"{what} cannot be empty.")
@@ -63,24 +55,38 @@ def clean(value: str, limit: int, what: str) -> str:
     return value
 
 
-def add_comment(pool: ConnectionPool, author: str, body: str) -> Comment:
+def _new_row_key(now: datetime) -> str:
+    micros = int(now.timestamp() * 1_000_000)
+    # The random tail keeps two comments in the same microsecond apart.
+    return f"{_ROW_KEY_CEILING - micros:016d}-{uuid.uuid4().hex[:8]}"
+
+
+def add_comment(table: TableClient, author: str, body: str) -> Comment:
     author = clean(author, MAX_NAME, "Name")
     body = clean(body, MAX_BODY, "Comment")
-    with pool.connection() as conn, conn.cursor(row_factory=class_row(Comment)) as cur:
-        cur.execute(
-            "INSERT INTO comments (author, body) VALUES (%s, %s)"
-            " RETURNING id, author, body, created_at",
-            (author, body),
-        )
-        return cur.fetchone()
+    now = datetime.now(timezone.utc)
+    comment = Comment(id=_new_row_key(now), author=author, body=body, created_at=now)
+    table.create_entity(
+        {
+            "PartitionKey": PARTITION,
+            "RowKey": comment.id,
+            "author": comment.author,
+            "body": comment.body,
+            "created_at": comment.created_at,
+        }
+    )
+    return comment
 
 
-def list_comments(pool: ConnectionPool, limit: int = 100) -> list[Comment]:
+def list_comments(table: TableClient, limit: int = 100) -> list[Comment]:
     """Newest first."""
-    with pool.connection() as conn, conn.cursor(row_factory=class_row(Comment)) as cur:
-        cur.execute(
-            "SELECT id, author, body, created_at FROM comments"
-            " ORDER BY created_at DESC, id DESC LIMIT %s",
-            (limit,),
-        )
-        return cur.fetchall()
+    entities = table.query_entities(
+        "PartitionKey eq @pk",
+        parameters={"pk": PARTITION},
+        select=["RowKey", "author", "body", "created_at"],
+        results_per_page=limit,
+    )
+    return [
+        Comment(id=e["RowKey"], author=e["author"], body=e["body"], created_at=e["created_at"])
+        for e in islice(entities, limit)
+    ]

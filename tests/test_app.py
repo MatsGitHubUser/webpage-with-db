@@ -1,4 +1,4 @@
-"""End-to-end tests of the Streamlit page, run against a real Postgres."""
+"""End-to-end tests of the Streamlit page, run against Azurite (local Table Storage)."""
 
 from conftest import APP_DIR
 from streamlit.testing.v1 import AppTest
@@ -52,7 +52,7 @@ def test_blank_name_is_rejected():
     assert at.text_input[0].label == "Vad heter du?"
 
 
-def test_comment_is_saved_and_seen_by_next_visitor(pool):
+def test_comment_is_saved_and_seen_by_next_visitor(table):
     at = visit()
     give_name(at, "Ann")
     assert "Commenting as **Ann**" in markdown_texts(at)
@@ -60,7 +60,7 @@ def test_comment_is_saved_and_seen_by_next_visitor(pool):
     at.text_area[0].input("Hello there")
     click(at, "Post comment")
     assert not at.exception
-    assert [(c.author, c.body) for c in db.list_comments(pool)] == [("Ann", "Hello there")]
+    assert [(c.author, c.body) for c in db.list_comments(table)] == [("Ann", "Hello there")]
 
     other = visit()
     give_name(other, "Bob")

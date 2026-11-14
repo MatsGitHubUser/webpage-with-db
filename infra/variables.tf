@@ -11,7 +11,7 @@ variable "resource_group_name" {
 }
 
 variable "running" {
-  description = "true runs the web app, false removes it. The database is always kept."
+  description = "true runs the web app, false removes it. The comment storage is always kept."
   type        = bool
 }
 
@@ -27,32 +27,14 @@ variable "min_replicas" {
   default     = 0
 }
 
-variable "postgres_server_name" {
-  description = "Globally unique Postgres server name. Set by scripts/bootstrap-azure.sh."
-  type        = string
-}
-
 variable "location" {
   description = <<-EOT
-    Azure region for the database and the web app. It differs from the resource
-    group's region (Sweden Central) because there the subscription was refused
-    B_Standard_B1ms ("SkuNotAvailable"), and West Europe is not accepting new
-    customers. The subscription is also limited to one Container Apps
-    environment in total, across all regions. Changing this after creation
-    replaces the database and loses the comments, which prevent_destroy blocks.
+    Azure region for the comment storage and the web app. It differs from the
+    resource group's region (Sweden Central) because the subscription may have
+    only one Container Apps environment in total, and cae-webpagedb was created
+    here. Changing this after creation replaces the storage account and loses
+    the comments, which prevent_destroy blocks.
   EOT
   type        = string
   default     = "northeurope"
-}
-
-variable "postgres_version" {
-  description = "Major Postgres version. Keep in step with compose.yaml."
-  type        = string
-  default     = "17"
-}
-
-variable "postgres_sku" {
-  description = "Server size. Burstable B1ms is the smallest."
-  type        = string
-  default     = "B_Standard_B1ms"
 }

@@ -1,25 +1,26 @@
 # webpage-with-db
 
-A comment wall. Visitors are asked for their name, then they can read and write
-comments, which are saved in Postgres.
+A page about *Così fan tutte* with a comment wall. Visitors are asked for their
+name, then they can read and write comments, which are saved in Azure Table
+Storage.
 
 - **App:** [Streamlit](https://streamlit.io) (Python), in `app/`
-- **Database:** Postgres 17. Locally in Docker; in Azure, Azure Database for PostgreSQL Flexible Server
+- **Storage:** Azure Table Storage. Locally, the [Azurite](https://github.com/Azure/Azurite) emulator in Docker
 - **Hosting:** Azure Container Apps, deployed with Terraform from GitHub Actions
 
 ## Develop locally
 
 ```sh
-docker compose up -d --build   # app on http://localhost:8501, Postgres on localhost:5432
+docker compose up -d --build   # app on http://localhost:8501, Azurite tables on localhost:10002
 docker compose logs -f app     # follow the app log
-docker compose down            # stop (comments are kept in the pgdata volume)
+docker compose down            # stop (comments are kept in the tabledata volume)
 docker compose down -v         # stop and delete the local comments
 ```
 
 Edits in `app/` reload automatically. Restart with `docker compose up -d --build`
 after changing `app/requirements.txt`.
 
-Run the tests (they use their own throwaway database, not your local comments):
+Run the tests (they use their own in-memory Azurite, not your local comments):
 
 ```sh
 docker compose --profile test run --rm --build test
@@ -33,14 +34,15 @@ docker compose --profile test down -v
 3. Run `az login` and `gh auth login`, then `scripts/bootstrap-azure.sh OWNER/REPO`.
 
 The workflow signs in to Azure with OIDC, so no secrets are stored in GitHub.
-Terraform creates the database password and keeps it in its state file, in the
-private state storage account.
+Terraform passes the storage account's connection string to the app as a
+Container App secret. It is also in the Terraform state file, in the private
+state storage account.
 
 ## Start, stop, check
 
 ```sh
 gh workflow run service -f action=start   # deploys the current main, also use this to update
-gh workflow run service -f action=stop    # removes the web app and pauses the database
+gh workflow run service -f action=stop    # removes the web app; comments are kept
 gh run watch                              # follow the run; the URL is in the run summary
 ```
 
@@ -56,8 +58,7 @@ what is running in Azure until the next `start`.
 
 ## Costs
 
-- The database is the main cost. It is billed while it runs; its storage is billed even when paused.
-- Azure starts a paused database again automatically after 7 days. Run `stop` again if you aren't using it.
-- The web app costs little when idle because it scales to zero.
+- Table Storage costs a few cents a month for a site this size. It is always on; there is nothing to pause.
+- The web app costs little when idle because it scales to zero. `stop` removes it completely.
 - To remove everything: `az group delete -n rg-webpagedb` (this deletes the comments).
-  Terraform refuses to delete the database on its own, to protect the comments.
+  Terraform refuses to delete the storage account on its own, to protect the comments.

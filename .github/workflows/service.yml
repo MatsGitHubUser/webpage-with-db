@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Start (or update) the service, or stop it
+        description: Start (or update) the web app, or stop it (comments are kept)
         type: choice
         required: true
         default: start
@@ -15,10 +15,6 @@ on:
 permissions:
   contents: read
 
-env:
-  RESOURCE_GROUP: rg-webpagedb
-  PG_SERVER: ${{ vars.PG_SERVER_NAME }}
-
 jobs:
   test:
     if: github.event_name == 'push' || inputs.action == 'start'
@@ -26,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run tests against Postgres
+      - name: Run tests against Azurite
         run: docker compose --profile test run --rm --build test
 
       - name: Clean up
@@ -89,25 +85,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.13.*"
           terraform_wrapper: false
-
-      - name: Wake the database
-        if: inputs.action == 'start'
-        run: |
-          state="$(az postgres flexible-server show -g "$RESOURCE_GROUP" -n "$PG_SERVER" --query state -o tsv 2>/dev/null || echo NotCreated)"
-          echo "Database state: $state"
-          if [ "$state" = "Stopped" ]; then
-            az postgres flexible-server start -g "$RESOURCE_GROUP" -n "$PG_SERVER" -o none
-          fi
 
       - name: Init
         run: |
@@ -121,17 +102,7 @@ jobs:
         env:
           TF_VAR_running: ${{ inputs.action == 'start' }}
           TF_VAR_image: ${{ needs.build.outputs.image }}
-          TF_VAR_postgres_server_name: ${{ vars.PG_SERVER_NAME }}
         run: terraform apply -auto-approve -input=false
-
-      - name: Pause the database
-        if: inputs.action == 'stop'
-        run: |
-          state="$(az postgres flexible-server show -g "$RESOURCE_GROUP" -n "$PG_SERVER" --query state -o tsv)"
-          echo "Database state: $state"
-          if [ "$state" = "Ready" ]; then
-            az postgres flexible-server stop -g "$RESOURCE_GROUP" -n "$PG_SERVER" -o none
-          fi
 
       - name: Report URL
         run: |
