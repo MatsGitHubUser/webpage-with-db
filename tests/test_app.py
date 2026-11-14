@@ -30,15 +30,26 @@ def markdown_texts(at):
 def test_visitor_is_asked_for_name_first():
     at = visit()
     assert not at.exception
-    assert at.text_input[0].label == "What is your name?"
+    assert at.text_input[0].label == "Vad heter du?"
     assert len(at.text_area) == 0
+
+
+def test_guide_is_shown_above_the_comments():
+    at = visit()
+    assert at.title[0].value.startswith("Così fan tutte")
+    assert at.header[0].value == "Om föreställningen"
+    assert len(at.get("image")) == 1
+    texts = markdown_texts(at)
+    assert any("Kungliga Operans stora scen" in t for t in texts)
+    assert any("docs.google.com/document/d/1RvUglY0pjFoPL7NFRSsJ0aBISHK_ACKhrfgNuhh0-m8" in t for t in texts)
+    assert at.header[1].value == "Comments"
 
 
 def test_blank_name_is_rejected():
     at = visit()
     give_name(at, "   ")
     assert at.error[0].value == "Name cannot be empty."
-    assert at.text_input[0].label == "What is your name?"
+    assert at.text_input[0].label == "Vad heter du?"
 
 
 def test_comment_is_saved_and_seen_by_next_visitor(pool):
