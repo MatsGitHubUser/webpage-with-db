@@ -1,0 +1,69 @@
+# Local development. `docker compose up -d --build` runs the app on
+# http://localhost:8501 with a local Postgres; code changes reload automatically.
+# `docker compose --profile test run --rm --build test` runs the tests against a
+# separate throwaway database.
+
+x-pg: &pg
+  PGUSER: app
+  PGPASSWORD: local-dev-only
+  PGSSLMODE: disable
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: local-dev-only
+      POSTGRES_DB: comments
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck: &pg-health
+      test: ["CMD-SHELL", "pg_isready -U app -d comments"]
+      interval: 2s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      <<: *pg
+      PGHOST: db
+      PGDATABASE: comments
+      STREAMLIT_SERVER_RUN_ON_SAVE: "true"
+    volumes:
+      - ./app:/app:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  testdb:
+    image: postgres:17-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: local-dev-only
+      POSTGRES_DB: comments
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck: *pg-health
+
+  test:
+    build:
+      context: .
+      target: test
+    profiles: [test]
+    environment:
+      <<: *pg
+      PGHOST: testdb
+      PGDATABASE: comments
+    depends_on:
+      testdb:
+        condition: service_healthy
+
+volumes:
+  pgdata:
