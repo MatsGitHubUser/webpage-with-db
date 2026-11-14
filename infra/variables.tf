@@ -36,12 +36,13 @@ variable "location" {
   description = <<-EOT
     Azure region for the database and the web app. It differs from the resource
     group's region (Sweden Central) because there the subscription was refused
-    B_Standard_B1ms ("SkuNotAvailable") and already has its one allowed Container
-    Apps environment (cae-webserver in rg-webserver). Changing it after creation
+    B_Standard_B1ms ("SkuNotAvailable"), and West Europe is not accepting new
+    customers. The subscription is also limited to one Container Apps
+    environment in total, across all regions. Changing this after creation
     replaces the database and loses the comments, which prevent_destroy blocks.
   EOT
   type        = string
-  default     = "westeurope"
+  default     = "northeurope"
 }
 
 variable "postgres_version" {
