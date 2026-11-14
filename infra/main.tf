@@ -43,7 +43,7 @@ resource "random_password" "postgres" {
 resource "azurerm_postgresql_flexible_server" "main" {
   name                          = var.postgres_server_name
   resource_group_name           = data.azurerm_resource_group.main.name
-  location                      = var.postgres_location
+  location                      = var.location
   version                       = var.postgres_version
   sku_name                      = var.postgres_sku
   storage_mb                    = 32768
@@ -84,7 +84,7 @@ resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
 # Kept while stopped: it is free and holds the app's stable domain.
 resource "azurerm_container_app_environment" "main" {
   name                = "cae-${var.name}"
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
 }
 
