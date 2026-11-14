@@ -32,6 +32,17 @@ variable "postgres_server_name" {
   type        = string
 }
 
+variable "postgres_location" {
+  description = <<-EOT
+    Azure region for the database. It can differ from the resource group's
+    region (Sweden Central): the subscription was refused B_Standard_B1ms there
+    with "SkuNotAvailable". Changing it after creation replaces the server and
+    loses the comments, which prevent_destroy blocks.
+  EOT
+  type        = string
+  default     = "northeurope"
+}
+
 variable "postgres_version" {
   description = "Major Postgres version. Keep in step with compose.yaml."
   type        = string

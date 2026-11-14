@@ -43,7 +43,7 @@ resource "random_password" "postgres" {
 resource "azurerm_postgresql_flexible_server" "main" {
   name                          = var.postgres_server_name
   resource_group_name           = data.azurerm_resource_group.main.name
-  location                      = data.azurerm_resource_group.main.location
+  location                      = var.postgres_location
   version                       = var.postgres_version
   sku_name                      = var.postgres_sku
   storage_mb                    = 32768
